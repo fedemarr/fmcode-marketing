@@ -1,0 +1,20 @@
+# env
+.env
+.env.local
+.env.*.local
+
+# next
+.next/
+out/
+
+# node
+node_modules/
+
+# misc
+.DS_Store
+*.pem
+npm-debug.log*
+
+# vercel
+.vercel
+

@@ -1,4 +1,5 @@
 export const dynamic = "force-dynamic"
+export const maxDuration = 60
 
 import { NextRequest } from "next/server"
 import { z } from "zod"
@@ -104,9 +105,6 @@ export async function POST(req: NextRequest) {
           postId: post.id,
         },
       })
-
-      // Pequeño delay entre llamadas a la API de Claude
-      await new Promise((r) => setTimeout(r, 500))
 
       createdPosts.push(post)
     }

@@ -1,8 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk"
 import { env } from "@/lib/env"
 
-const anthropic = new Anthropic({ apiKey: env.ANTHROPIC_API_KEY })
-
 export const MARKETING_AGENT_SYSTEM_PROMPT = `Sos un Director de Marketing Senior especializado en redes sociales para PyMEs y negocios argentinos.
 Tu función es crear contenido estratégico que genere leads, ventas y autoridad de marca.
 
@@ -18,6 +16,7 @@ Siempre respondé con JSON válido y sin ningún texto extra fuera del JSON.
 `
 
 export async function callMarketingAgent(prompt: string): Promise<string> {
+  const anthropic = new Anthropic({ apiKey: env.ANTHROPIC_API_KEY })
   const response = await anthropic.messages.create({
     model: "claude-sonnet-4-6",
     max_tokens: 4096,

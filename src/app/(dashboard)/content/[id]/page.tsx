@@ -3,8 +3,8 @@ import { notFound } from "next/navigation"
 import { ContentStatus } from "@prisma/client"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { PostApprovalActions } from "@/components/content/post-approval-actions"
-import { ArrowLeft } from "lucide-react"
+import { PostActions } from "@/components/content/post-actions"
+import { ArrowLeft, ImageIcon } from "lucide-react"
 import Link from "next/link"
 
 const statusLabels: Record<ContentStatus, string> = {
@@ -63,10 +63,24 @@ export default async function ContentDetailPage({ params }: { params: { id: stri
   const post = await getPost(params.id)
   if (!post) notFound()
 
-  const isEditable = post.status === ContentStatus.DRAFT || post.status === ContentStatus.PENDING_APPROVAL
+  const isActionable =
+    post.status === ContentStatus.DRAFT ||
+    post.status === ContentStatus.PENDING_APPROVAL ||
+    post.status === ContentStatus.APPROVED
+
+  const formattedDate = post.scheduledAt
+    ? new Date(post.scheduledAt).toLocaleDateString("es-AR", {
+        weekday: "long",
+        day: "numeric",
+        month: "long",
+        hour: "2-digit",
+        minute: "2-digit",
+      })
+    : null
 
   return (
-    <div className="space-y-6 max-w-3xl">
+    <div className="max-w-5xl space-y-6">
+      {/* Header */}
       <div className="flex items-center gap-3">
         <Link href={`/clients/${post.client.id}`} className="text-gray-400 hover:text-gray-600 transition-colors">
           <ArrowLeft className="h-5 w-5" />
@@ -76,12 +90,10 @@ export default async function ContentDetailPage({ params }: { params: { id: stri
             <h1 className="text-lg font-bold text-gray-900 truncate">{post.client.name}</h1>
             <span className="text-gray-400">·</span>
             <span className="text-sm text-gray-600">{contentTypeLabels[post.contentType]}</span>
-            {post.scheduledAt && (
+            {formattedDate && (
               <>
                 <span className="text-gray-400">·</span>
-                <span className="text-sm text-gray-600">
-                  {new Date(post.scheduledAt).toLocaleDateString("es-AR", { weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}
-                </span>
+                <span className="text-sm text-gray-600">{formattedDate}</span>
               </>
             )}
           </div>
@@ -89,65 +101,116 @@ export default async function ContentDetailPage({ params }: { params: { id: stri
         <Badge variant={statusVariants[post.status]}>{statusLabels[post.status]}</Badge>
       </div>
 
-      <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="text-sm text-gray-500 font-medium uppercase tracking-wide">Objetivo del post</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <p className="text-sm text-gray-700">{post.objective}</p>
-        </CardContent>
-      </Card>
+      {/* Main layout: image preview + details */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Left: Instagram-style preview */}
+        <div className="space-y-0">
+          <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm">
+            {/* Instagram post header */}
+            <div className="flex items-center gap-2 px-3 py-2 border-b border-gray-100">
+              <div className="w-8 h-8 rounded-full bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center text-white text-xs font-bold">
+                {post.client.name.charAt(0).toUpperCase()}
+              </div>
+              <div>
+                <p className="text-xs font-semibold text-gray-900">{post.client.name.toLowerCase().replace(/\s+/g, "_")}</p>
+                <p className="text-xs text-gray-400">{contentTypeLabels[post.contentType]}</p>
+              </div>
+            </div>
 
-      <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="text-base">Contenido</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div>
-            <p className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">Hook (primeras líneas)</p>
-            <p className="text-sm font-medium text-gray-900 bg-blue-50 border border-blue-100 rounded-md p-3">{post.hook}</p>
-          </div>
-          <div>
-            <p className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">Caption completo</p>
-            <p className="text-sm text-gray-700 whitespace-pre-line border rounded-md p-3 bg-gray-50">{post.caption}</p>
-          </div>
-          <div>
-            <p className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">CTA</p>
-            <p className="text-sm text-gray-700">{post.cta}</p>
-          </div>
-          <div>
-            <p className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">Hashtags</p>
-            <div className="flex flex-wrap gap-1">
-              {post.hashtags.map((tag) => (
-                <span key={tag} className="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full">#{tag}</span>
-              ))}
+            {/* Image */}
+            {post.imageUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={post.imageUrl}
+                alt="Imagen del post"
+                className="w-full aspect-square object-cover"
+              />
+            ) : (
+              <div className="w-full aspect-square bg-gradient-to-br from-gray-100 to-gray-200 flex flex-col items-center justify-center gap-3 p-6">
+                <ImageIcon className="h-12 w-12 text-gray-300" />
+                <p className="text-xs text-gray-400 text-center italic leading-relaxed">
+                  {post.imagePrompt}
+                </p>
+                <p className="text-xs text-gray-300 text-center">
+                  Copiá el prompt de arriba para generar la imagen en Midjourney o DALL-E
+                </p>
+              </div>
+            )}
+
+            {/* Caption */}
+            <div className="px-3 py-3 space-y-1">
+              <p className="text-xs text-gray-900 line-clamp-3">
+                <span className="font-semibold">{post.client.name.toLowerCase().replace(/\s+/g, "_")} </span>
+                {post.caption}
+              </p>
+              {post.hashtags.length > 0 && (
+                <p className="text-xs text-blue-500 line-clamp-1">
+                  {post.hashtags.map((h) => `#${h}`).join(" ")}
+                </p>
+              )}
             </div>
           </div>
-        </CardContent>
-      </Card>
+        </div>
 
-      {post.imageUrl ? (
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-base">Imagen</CardTitle>
-          </CardHeader>
-          <CardContent>
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={post.imageUrl} alt="Imagen del post" className="rounded-md max-w-sm" />
-          </CardContent>
-        </Card>
-      ) : (
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-base">Prompt de imagen</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-sm text-gray-600 italic">{post.imagePrompt}</p>
-            <p className="text-xs text-gray-400 mt-2">Usá este prompt en Midjourney, DALL-E o similar para generar la imagen.</p>
-          </CardContent>
-        </Card>
-      )}
+        {/* Right: Post details + actions */}
+        <div className="space-y-4">
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-xs text-gray-500 font-medium uppercase tracking-wide">Objetivo</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className="text-sm text-gray-700">{post.objective}</p>
+            </CardContent>
+          </Card>
 
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-xs text-gray-500 font-medium uppercase tracking-wide">Hook</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className="text-sm font-medium text-gray-900 bg-blue-50 border border-blue-100 rounded p-2">{post.hook}</p>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-xs text-gray-500 font-medium uppercase tracking-wide">Caption completo</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className="text-sm text-gray-700 whitespace-pre-line leading-relaxed">{post.caption}</p>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-xs text-gray-500 font-medium uppercase tracking-wide">CTA · Hashtags</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-2">
+              <p className="text-sm text-gray-700">{post.cta}</p>
+              <div className="flex flex-wrap gap-1 pt-1">
+                {post.hashtags.map((tag) => (
+                  <span key={tag} className="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full">
+                    #{tag}
+                  </span>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+
+          {!post.imageUrl && (
+            <Card className="border-dashed border-gray-300">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-xs text-gray-500 font-medium uppercase tracking-wide">Prompt de imagen (para IA)</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="text-xs text-gray-600 italic">{post.imagePrompt}</p>
+              </CardContent>
+            </Card>
+          )}
+        </div>
+      </div>
+
+      {/* Rejection reason */}
       {post.status === ContentStatus.REJECTED && post.rejectionReason && (
         <Card className="border-red-200 bg-red-50">
           <CardContent className="pt-4">
@@ -157,6 +220,7 @@ export default async function ContentDetailPage({ params }: { params: { id: stri
         </Card>
       )}
 
+      {/* Metrics */}
       {post.metrics && (
         <Card>
           <CardHeader className="pb-3">
@@ -182,17 +246,22 @@ export default async function ContentDetailPage({ params }: { params: { id: stri
         </Card>
       )}
 
-      {isEditable && (
-        <PostApprovalActions
-          postId={post.id}
-          currentStatus={post.status}
-          scheduledAt={post.scheduledAt?.toISOString()}
-          initialCaption={post.caption}
-          initialHook={post.hook}
-          initialCta={post.cta}
-          initialHashtags={post.hashtags}
-          clientId={post.client.id}
-        />
+      {/* Actions */}
+      {isActionable && (
+        <Card>
+          <CardContent className="pt-5">
+            <PostActions
+              postId={post.id}
+              currentStatus={post.status}
+              scheduledAt={post.scheduledAt?.toISOString()}
+              initialCaption={post.caption}
+              initialHook={post.hook}
+              initialCta={post.cta}
+              initialHashtags={post.hashtags}
+              clientId={post.client.id}
+            />
+          </CardContent>
+        </Card>
       )}
     </div>
   )

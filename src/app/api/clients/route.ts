@@ -1,3 +1,5 @@
+export const dynamic = "force-dynamic"
+
 import { NextRequest } from "next/server"
 import { db } from "@/lib/db"
 import { apiSuccess, apiError } from "@/lib/errors"

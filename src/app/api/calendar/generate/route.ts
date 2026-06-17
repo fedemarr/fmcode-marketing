@@ -15,12 +15,15 @@ const schema = z.object({
   clientId: z.string().min(1),
   month: z.number().int().min(1).max(12),
   year: z.number().int().min(2024).max(2030),
+  batch: z.number().int().min(0).default(0), // 0 = primera vez, 1 = segunda tanda, etc.
 })
+
+const BATCH_SIZE = 6
 
 function buildImageUrl(prompt: string): string {
   const seed = Math.floor(Math.random() * 999999)
   const encoded = encodeURIComponent(
-    prompt + ", instagram post, square format 1:1, professional photography, high quality, vibrant"
+    prompt + ", instagram post, square format 1:1, professional photography, high quality"
   )
   return `https://image.pollinations.ai/prompt/${encoded}?width=1080&height=1080&seed=${seed}&nologo=true&enhance=true`
 }
@@ -28,7 +31,7 @@ function buildImageUrl(prompt: string): string {
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json()
-    const { clientId, month, year } = schema.parse(body)
+    const { clientId, month, year, batch } = schema.parse(body)
 
     const client = await db.client.findUnique({ where: { id: clientId, deletedAt: null } })
     if (!client) throw new NotFoundError("Cliente")
@@ -38,57 +41,55 @@ export async function POST(req: NextRequest) {
     const prevYear = month === 1 ? year - 1 : year
     const previousMetrics = await formatMetricsForAI(clientId, prevMonth, prevYear)
 
-    // 2. Estrategia mensual
+    // 2. Estrategia: si ya existe la reutilizamos (solo en batch > 0)
     let strategyRecord = await db.contentStrategy.findUnique({
       where: { clientId_month_year: { clientId, month, year } },
     })
 
-    const strategyData = await generateMonthlyStrategy(client, month, year, previousMetrics || undefined)
+    let strategyData
+    if (batch === 0 || !strategyRecord) {
+      strategyData = await generateMonthlyStrategy(client, month, year, previousMetrics || undefined)
 
-    if (strategyRecord) {
-      strategyRecord = await db.contentStrategy.update({
-        where: { id: strategyRecord.id },
-        data: {
-          analysis: strategyData.analysis,
-          strategy: JSON.stringify(strategyData),
-        },
-      })
+      if (strategyRecord) {
+        strategyRecord = await db.contentStrategy.update({
+          where: { id: strategyRecord.id },
+          data: { analysis: strategyData.analysis, strategy: JSON.stringify(strategyData) },
+        })
+      } else {
+        strategyRecord = await db.contentStrategy.create({
+          data: {
+            clientId, month, year,
+            analysis: strategyData.analysis,
+            strategy: JSON.stringify(strategyData),
+          },
+        })
+      }
     } else {
-      strategyRecord = await db.contentStrategy.create({
-        data: {
-          clientId,
-          month,
-          year,
-          analysis: strategyData.analysis,
-          strategy: JSON.stringify(strategyData),
-        },
-      })
+      strategyData = JSON.parse(strategyRecord.strategy)
     }
 
-    // 3. Slots del calendario (máx 12 posts para entrar en 60s de Vercel Hobby)
+    // 3. Slots del mes completo — salteamos los ya generados
     const allSlots = generateCalendarSlots(strategyData, month, year, client.postFrequency)
-    const slots = allSlots.slice(0, 12)
+    const existingCount = await db.post.count({
+      where: { clientId, deletedAt: null, scheduledAt: { gte: new Date(year, month - 1, 1), lt: new Date(year, month, 1) } },
+    })
+    const slots = allSlots.slice(existingCount, existingCount + BATCH_SIZE)
+
+    if (slots.length === 0) {
+      return apiSuccess({ strategyId: strategyRecord.id, postsGenerated: 0, posts: [], done: true })
+    }
 
     // 4. Generar posts con imagen IA incluida
     const createdPosts = []
     const previousCaptions: string[] = []
 
     for (const slot of slots) {
-      const pillar = strategyData.contentPillars.find((p) => p.name === slot.pillarName)
+      const pillar = strategyData.contentPillars.find((p: { name: string }) => p.name === slot.pillarName)
         ?? strategyData.contentPillars[0]
 
-      const generated = await generatePost(
-        client,
-        strategyData,
-        pillar,
-        slot.contentType,
-        slot.date,
-        previousCaptions
-      )
-
+      const generated = await generatePost(client, strategyData, pillar, slot.contentType, slot.date, previousCaptions)
       previousCaptions.push(generated.caption.slice(0, 100))
 
-      // Imagen generada automáticamente con Pollinations AI (gratis, sin API key)
       const imageUrl = buildImageUrl(generated.imagePrompt)
 
       const post = await db.post.create({
@@ -122,10 +123,16 @@ export async function POST(req: NextRequest) {
       createdPosts.push(post)
     }
 
+    const totalAfter = existingCount + createdPosts.length
+    const done = totalAfter >= allSlots.length
+
     return apiSuccess({
       strategyId: strategyRecord.id,
       postsGenerated: createdPosts.length,
       posts: createdPosts,
+      done,
+      totalPosts: totalAfter,
+      totalSlots: allSlots.length,
     })
   } catch (error) {
     console.error("[generate] error:", error)

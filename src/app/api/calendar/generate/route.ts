@@ -57,8 +57,9 @@ export async function POST(req: NextRequest) {
       })
     }
 
-    // 3. Generar los slots del calendario
-    const slots = generateCalendarSlots(strategyData, month, year, client.postFrequency)
+    // 3. Generar los slots del calendario (máx 16 para no superar el timeout de Vercel Hobby)
+    const allSlots = generateCalendarSlots(strategyData, month, year, client.postFrequency)
+    const slots = allSlots.slice(0, 16)
 
     // 4. Generar cada post y guardarlo
     const createdPosts = []

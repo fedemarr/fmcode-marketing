@@ -1,37 +1,55 @@
-import { auth } from "@/lib/auth"
-import { NextResponse } from "next/server"
-import type { NextRequest } from "next/server"
+import { createServerClient } from "@supabase/ssr"
+import { NextResponse, type NextRequest } from "next/server"
 
-export default auth((req) => {
-  const isLoggedIn = !!req.auth
-  const isApiRoute = req.nextUrl.pathname.startsWith("/api/")
-  const isAuthRoute = req.nextUrl.pathname.startsWith("/api/auth")
-  const isLoginPage = req.nextUrl.pathname === "/login"
+export async function middleware(request: NextRequest) {
+  let supabaseResponse = NextResponse.next({ request })
 
-  // Las rutas de auth siempre pasan
-  if (isAuthRoute) return NextResponse.next()
+  const supabase = createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        getAll() { return request.cookies.getAll() },
+        setAll(cs) {
+          cs.forEach(({ name, value }) => request.cookies.set(name, value))
+          supabaseResponse = NextResponse.next({ request })
+          cs.forEach(({ name, value, options }) => supabaseResponse.cookies.set(name, value, options))
+        },
+      },
+    }
+  )
 
-  // Las rutas API devuelven 401 JSON en vez de redirigir al login
-  if (isApiRoute && !isLoggedIn) {
+  const { data: { user } } = await supabase.auth.getUser()
+
+  const path = request.nextUrl.pathname
+  const isAuthPage = path.startsWith("/login") || path.startsWith("/register")
+  const isApiRoute = path.startsWith("/api/")
+  const isWebhook = path.startsWith("/api/webhooks/")
+
+  // Webhooks no requieren auth
+  if (isWebhook) return supabaseResponse
+
+  // API routes: devolver 401 JSON si no hay sesión
+  if (isApiRoute && !user) {
     return NextResponse.json(
       { success: false, error: { code: "UNAUTHORIZED", message: "No autorizado" } },
       { status: 401 }
     )
   }
 
-  // Si está logueado y va al login, redirige al dashboard
-  if (isLoggedIn && isLoginPage) {
-    return NextResponse.redirect(new URL("/dashboard", req.url))
+  // Si está logueado y va al login/register → dashboard
+  if (user && isAuthPage) {
+    return NextResponse.redirect(new URL("/dashboard", request.url))
   }
 
-  // Si no está logueado y no es login, redirige al login
-  if (!isLoggedIn && !isLoginPage && !isApiRoute) {
-    return NextResponse.redirect(new URL("/login", req.url))
+  // Si no está logueado y va a ruta protegida → login
+  if (!user && !isAuthPage && !isApiRoute) {
+    return NextResponse.redirect(new URL("/login", request.url))
   }
 
-  return NextResponse.next()
-})
+  return supabaseResponse
+}
 
 export const config = {
-  matcher: ["/((?!_next/static|_next/image|favicon.ico).*)"],
+  matcher: ["/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)"],
 }

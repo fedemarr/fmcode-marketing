@@ -11,7 +11,10 @@ export const createClientSchema = z.object({
   instagramHandle: z.string().optional(),
 })
 
-export const updateClientSchema = createClientSchema.partial()
+export const updateClientSchema = createClientSchema.partial().extend({
+  instagramAccountId: z.string().optional(),
+  instagramToken: z.string().optional(),
+})
 
 export type CreateClientInput = z.infer<typeof createClientSchema>
 export type UpdateClientInput = z.infer<typeof updateClientSchema>

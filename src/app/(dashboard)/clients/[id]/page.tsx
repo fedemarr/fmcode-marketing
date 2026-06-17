@@ -4,8 +4,9 @@ import { ContentStatus } from "@prisma/client"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { GenerateCalendarButton } from "@/components/clients/generate-calendar-button"
+import { InstagramSettings } from "@/components/clients/instagram-settings"
 import Link from "next/link"
-import { Instagram, ArrowLeft } from "lucide-react"
+import { ArrowLeft } from "lucide-react"
 
 const statusLabels: Record<ContentStatus, string> = {
   DRAFT: "Borrador",
@@ -39,6 +40,7 @@ async function getClient(id: string) {
       postFrequency: true,
       instagramHandle: true,
       instagramAccountId: true,
+      instagramToken: true,
       isActive: true,
       posts: {
         where: { deletedAt: null },
@@ -125,21 +127,13 @@ export default async function ClientDetailPage({ params }: { params: { id: strin
           <CardHeader className="pb-3">
             <CardTitle className="text-base">Instagram</CardTitle>
           </CardHeader>
-          <CardContent className="space-y-3">
-            {client.instagramHandle ? (
-              <div className="flex items-center gap-2 text-sm">
-                <Instagram className="h-4 w-4 text-pink-500" />
-                <span className="text-gray-700">@{client.instagramHandle}</span>
-              </div>
-            ) : (
-              <p className="text-sm text-gray-400">Sin cuenta conectada</p>
-            )}
-            <div>
-              <p className="text-xs text-gray-500">Estado</p>
-              <Badge variant={client.instagramAccountId ? "success" : "secondary"} className="mt-1">
-                {client.instagramAccountId ? "Conectado" : "Sin conectar"}
-              </Badge>
-            </div>
+          <CardContent>
+            <InstagramSettings
+              clientId={client.id}
+              instagramHandle={client.instagramHandle}
+              instagramAccountId={client.instagramAccountId}
+              isConnected={!!(client.instagramAccountId && client.instagramToken)}
+            />
           </CardContent>
         </Card>
       </div>

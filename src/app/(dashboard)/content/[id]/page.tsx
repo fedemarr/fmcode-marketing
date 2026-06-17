@@ -259,6 +259,7 @@ export default async function ContentDetailPage({ params }: { params: { id: stri
               initialCta={post.cta}
               initialHashtags={post.hashtags}
               clientId={post.client.id}
+              hasImage={!!post.imageUrl}
             />
           </CardContent>
         </Card>

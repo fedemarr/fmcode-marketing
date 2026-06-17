@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { toast } from "@/hooks/use-toast"
-import { Check, X, Edit2, Save, Send, Calendar, Clock } from "lucide-react"
+import { Check, X, Edit2, Save, Send, Calendar, Clock, ImagePlus } from "lucide-react"
 import { ContentStatus } from "@prisma/client"
 
 interface Props {
@@ -20,6 +20,7 @@ interface Props {
   initialCta: string
   initialHashtags: string[]
   clientId: string
+  hasImage: boolean
 }
 
 function toLocalDatetimeValue(isoString?: string): string {
@@ -40,9 +41,10 @@ export function PostActions({
   initialCta,
   initialHashtags,
   clientId,
+  hasImage,
 }: Props) {
   const router = useRouter()
-  const [mode, setMode] = useState<"view" | "edit" | "reject" | "schedule">("view")
+  const [mode, setMode] = useState<"view" | "edit" | "reject" | "schedule" | "image">("view")
   const [loading, setLoading] = useState(false)
 
   const [caption, setCaption] = useState(initialCaption)
@@ -51,6 +53,39 @@ export function PostActions({
   const [hashtags, setHashtags] = useState(initialHashtags.join(", "))
   const [rejectReason, setRejectReason] = useState("")
   const [scheduleDate, setScheduleDate] = useState(toLocalDatetimeValue(scheduledAt))
+  const [imageUrl, setImageUrl] = useState("")
+  const [imageLoading, setImageLoading] = useState(false)
+
+  async function handlePublishNow() {
+    if (!hasImage) {
+      toast({
+        title: "Falta la imagen",
+        description: 'Primero subí una imagen con el botón "Agregar imagen".',
+        variant: "destructive",
+      })
+      setMode("image")
+      return
+    }
+
+    if (!confirm("¿Publicar este post en Instagram ahora mismo?")) return
+    setLoading(true)
+    try {
+      const res = await fetch(`/api/content/${postId}/publish-now`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+      })
+      const data = await res.json()
+      if (!data.success) throw new Error(data.error?.message)
+
+      toast({ title: "Publicado en Instagram", variant: "success" })
+      router.push(`/clients/${clientId}`)
+      router.refresh()
+    } catch (err) {
+      toast({ title: "Error al publicar", description: String(err), variant: "destructive" })
+    } finally {
+      setLoading(false)
+    }
+  }
 
   async function handleApproveWithDate(dateOverride?: string) {
     setLoading(true)
@@ -75,57 +110,25 @@ export function PostActions({
     }
   }
 
-  async function handlePublishNow() {
-    if (!confirm("¿Publicar este post en Instagram ahora mismo?")) return
-    setLoading(true)
+  async function handleSaveImage() {
+    if (!imageUrl.trim()) return
+    setImageLoading(true)
     try {
-      // Primero aprobar
-      const approveRes = await fetch(`/api/content/${postId}/approve`, {
+      const res = await fetch(`/api/content/${postId}/image`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({}),
-      })
-      const approveData = await approveRes.json()
-      if (!approveData.success) throw new Error(approveData.error?.message)
-
-      // Luego publicar
-      const publishRes = await fetch("/api/publish", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ postId }),
-      })
-      const publishData = await publishRes.json()
-      if (!publishData.success) throw new Error(publishData.error?.message)
-
-      toast({ title: "Publicado en Instagram", variant: "success" })
-      router.push(`/clients/${clientId}`)
-      router.refresh()
-    } catch (err) {
-      toast({ title: "Error al publicar", description: String(err), variant: "destructive" })
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  async function handlePublishApproved() {
-    if (!confirm("¿Publicar este post en Instagram ahora mismo?")) return
-    setLoading(true)
-    try {
-      const res = await fetch("/api/publish", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ postId }),
+        body: JSON.stringify({ type: "url", imageUrl: imageUrl.trim() }),
       })
       const data = await res.json()
       if (!data.success) throw new Error(data.error?.message)
 
-      toast({ title: "Publicado en Instagram", variant: "success" })
-      router.push(`/clients/${clientId}`)
+      toast({ title: "Imagen guardada", variant: "success" })
+      setMode("view")
       router.refresh()
     } catch (err) {
-      toast({ title: "Error al publicar", description: String(err), variant: "destructive" })
+      toast({ title: "Error al guardar imagen", description: String(err), variant: "destructive" })
     } finally {
-      setLoading(false)
+      setImageLoading(false)
     }
   }
 
@@ -180,6 +183,44 @@ export function PostActions({
     }
   }
 
+  // --- IMAGE MODE ---
+  if (mode === "image") {
+    return (
+      <Card className="border-purple-200">
+        <CardHeader className="pb-2">
+          <CardTitle className="text-base flex items-center gap-2">
+            <ImagePlus className="h-4 w-4 text-purple-600" />
+            Agregar imagen al post
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <div className="space-y-1">
+            <Label>URL de la imagen</Label>
+            <Input
+              type="url"
+              placeholder="https://..."
+              value={imageUrl}
+              onChange={(e) => setImageUrl(e.target.value)}
+            />
+          </div>
+          <p className="text-xs text-gray-500">
+            Generá la imagen en <strong>DALL-E</strong> (chat.openai.com) o <strong>Midjourney</strong> usando el prompt de imagen,
+            subila a Cloudinary o Imgur y pegá la URL acá.
+          </p>
+          <div className="flex gap-2">
+            <Button onClick={handleSaveImage} disabled={imageLoading || !imageUrl.trim()}>
+              <Save className="h-4 w-4 mr-1" />
+              {imageLoading ? "Guardando..." : "Guardar imagen"}
+            </Button>
+            <Button variant="outline" onClick={() => setMode("view")} disabled={imageLoading}>
+              Cancelar
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+    )
+  }
+
   // --- EDIT MODE ---
   if (mode === "edit") {
     return (
@@ -232,7 +273,7 @@ export function PostActions({
               rows={3}
               value={rejectReason}
               onChange={(e) => setRejectReason(e.target.value)}
-              placeholder="¿Por qué no sirve este post? El agente usará este feedback para mejorar en el futuro."
+              placeholder="¿Por qué no sirve este post? El agente usará este feedback para mejorar."
             />
           </div>
           <div className="flex gap-2">
@@ -269,7 +310,7 @@ export function PostActions({
           </div>
           <p className="text-xs text-gray-500 flex items-center gap-1">
             <Clock className="h-3 w-3" />
-            El cron de Vercel publicará automáticamente a las 22:00 UTC (19:00 ARG)
+            El cron de Vercel publica automáticamente a las 22:00 UTC (19:00 ARG)
           </p>
           <div className="flex gap-2">
             <Button onClick={() => handleApproveWithDate(scheduleDate)} disabled={loading}>
@@ -289,10 +330,16 @@ export function PostActions({
   if (currentStatus === ContentStatus.APPROVED) {
     return (
       <div className="space-y-3">
-        <Button onClick={handlePublishApproved} disabled={loading} className="bg-green-600 hover:bg-green-700 w-full sm:w-auto">
+        <Button onClick={handlePublishNow} disabled={loading} className="bg-green-600 hover:bg-green-700 w-full sm:w-auto">
           <Send className="h-4 w-4 mr-2" />
           {loading ? "Publicando..." : "Publicar en Instagram ahora"}
         </Button>
+        {!hasImage && (
+          <p className="text-xs text-amber-600 flex items-center gap-1">
+            ⚠ Necesitás agregar una imagen antes de publicar.
+            <button className="underline" onClick={() => setMode("image")}>Agregar imagen</button>
+          </p>
+        )}
         <p className="text-sm text-gray-500">O esperá a que el cron lo publique en la fecha programada.</p>
       </div>
     )
@@ -301,6 +348,13 @@ export function PostActions({
   // --- VIEW MODE: DRAFT / PENDING ---
   return (
     <div className="space-y-4">
+      {!hasImage && (
+        <div className="flex items-center gap-2 p-3 bg-amber-50 border border-amber-200 rounded-lg text-sm text-amber-700">
+          ⚠ Este post no tiene imagen todavía.
+          <button className="underline font-medium" onClick={() => setMode("image")}>Agregar imagen</button>
+        </div>
+      )}
+
       <p className="text-sm font-medium text-gray-700">¿Qué hacemos con este post?</p>
       <div className="flex flex-col sm:flex-row gap-3">
         <Button
@@ -331,7 +385,12 @@ export function PostActions({
           Aprobar (fecha del calendario)
         </Button>
       </div>
+
       <div className="flex gap-2 pt-2 border-t">
+        <Button variant="outline" size="sm" onClick={() => setMode("image")} disabled={loading}>
+          <ImagePlus className="h-4 w-4 mr-1" />
+          Agregar imagen
+        </Button>
         <Button variant="outline" size="sm" onClick={() => setMode("edit")} disabled={loading}>
           <Edit2 className="h-4 w-4 mr-1" />
           Editar contenido

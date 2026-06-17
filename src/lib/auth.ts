@@ -1,8 +1,8 @@
 import NextAuth from "next-auth"
 import Credentials from "next-auth/providers/credentials"
-import { env } from "@/lib/env"
 
 export const { handlers, signIn, signOut, auth } = NextAuth({
+  secret: process.env.AUTH_SECRET,
   providers: [
     Credentials({
       credentials: {
@@ -13,8 +13,12 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         const email = credentials?.email as string
         const password = credentials?.password as string
 
-        if (email === env.ADMIN_EMAIL && password === env.ADMIN_PASSWORD) {
-          return { id: "1", email: env.ADMIN_EMAIL, name: "Fede" }
+        const adminEmail = process.env.ADMIN_EMAIL
+        const adminPassword = process.env.ADMIN_PASSWORD
+
+        if (!adminEmail || !adminPassword) return null
+        if (email === adminEmail && password === adminPassword) {
+          return { id: "1", email: adminEmail, name: "Fede" }
         }
         return null
       },
